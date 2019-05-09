@@ -74,16 +74,19 @@ def rs_from_der(der_encoded_signature):
         s = array[s_offset + 4:]
 
         # Cast them to integers
-        r = long(r, 16)
-        s = long(s, 16)
+        # r = long(r, 16)
+        # s = long(s, 16)
+        r = int(r, 16)
+        s = int(s, 16)
 
     else:
         rs, _ = der.remove_sequence(der.unpem(der_encoded_signature))
         r, tail = der.remove_integer(rs)
         s, point_str_bitstring = der.remove_integer(tail)
 
-    # print("r : " + str(r))
-    # print("s : " + str(s))
+    if debug:
+        print("r : " + str(r))
+        print("s : " + str(s))
 
     return r, s
 
@@ -147,8 +150,10 @@ def get_private_key(verification_key, msg_1, sign_1, msg_2, sign_2, hash_algo):
     sig_2 = Signature(*rs_from_der(sign_2))
 
     # Get hashes from messages and convert them to integer
-    msg_1_int_hash = long(binascii.hexlify(digest(hash_algo, msg_1)), 16)
-    msg_2_int_hash = long(binascii.hexlify(digest(hash_algo, msg_2)), 16)
+    # Gmsg_1_int_hash = long(binascii.hexlify(digest(hash_algo, msg_1)), 16)
+    # Gmsg_2_int_hash = long(binascii.hexlify(digest(hash_algo, msg_2)), 16)
+    msg_1_int_hash = int(binascii.hexlify(digest(hash_algo, msg_1)), 16)
+    msg_2_int_hash = int(binascii.hexlify(digest(hash_algo, msg_2)), 16)
 
     return recover_private_key(verification_key, msg_1_int_hash, sig_1, msg_2_int_hash, sig_2, hash_algo)
 
@@ -209,19 +214,21 @@ def sign_in_der(signing_key, message, hash_algo):
     :param hash_algo:
     :return:
     """
-    h = get_hash_function(hash_algo)(message).digest()
-    h_int = int(binascii.hexlify(h), 16)
-    r, s = private_key.sign_number(h_int)
+
+    # Get hash from message and convert it to integer
+    hash = digest(hash_algo, message)
+    h_int = int(binascii.hexlify(hash), 16)
+    r, s = signing_key.sign_number(h_int)
     d = der.encode_sequence(der.encode_integer(r), der.encode_integer(s))
     der_signature = base64.b64encode(d)
 
     if debug:
         print("")
-        print("[DBG] hash (hex) : " + str(binascii.hexlify(h)))
+        print("[DBG] hash (hex) : " + str(binascii.hexlify(hash)))
         print("[DBG] r (" + str(len(str(hex(r)))) + ") : " + str(hex(r)))
         print("[DBG] s (" + str(len(str(hex(s)))) + ") : " + str(hex(s)))
-        print("[DBG] hex : " + binascii.hexlify(d))
-        print("[DBG] der : " + der_signature)
+        print("[DBG] hex : " + str(binascii.hexlify(d)))
+        print("[DBG] der : " + str(der_signature))
 
         sig = Signature(*rs_from_der(der_signature))
         assert signing_key.get_verifying_key().pubkey.verifies(h_int,
@@ -238,9 +245,9 @@ if __name__ == "__main__":
 
     # Launch exploit to try to get private key
     private_key = get_private_key(public_verification_key,
-                                  message_1_cleartext,
+                                  message_1_cleartext.encode('utf-8'),
                                   message_1_signature_der,
-                                  message_2_cleartext,
+                                  message_2_cleartext.encode('utf-8'),
                                   message_2_signature_der,
                                   hashing_algorithm)
 
@@ -248,6 +255,6 @@ if __name__ == "__main__":
     print(private_key.to_pem())
 
     # Sign ECW Flag
-    flag_signed = sign_in_der(private_key, flag_clear, hashing_algorithm)
+    flag_signed = sign_in_der(private_key, flag_clear.encode('utf-8'), hashing_algorithm)
     
-    print(sign_in_der(private_key, flag_clear, hashing_algorithm))
+    print(sign_in_der(private_key, flag_clear.encode('utf-8'), hashing_algorithm))
