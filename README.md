@@ -15,8 +15,9 @@ Run with :
 ``` shell
 python ecdsa-nonce_reuse-crack.py
 ```
- or
- 
- ``` shell
+
+or
+
+``` shell
 python3 ecdsa-nonce_reuse-crack.py
 ```
