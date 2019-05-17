@@ -9,13 +9,15 @@ matrix:
       os: osx
       osx_image: xcode10.2
       language: shell
-      install: pip install -r requirements.txt
     - name: "Python 3.7.3 on Windows"
       os: windows
       language: shell
       before_install: choco install python
       env: PATH=/c/Python37:/c/Python37/Scripts:$PATH
-      install: pip install -r requirements.txt
+
+install:
+  - pip install -r requirements.txt
+  - pip3 install -r requirements.txt
 
 script:
   - python3 ecdsa-nonce_reuse-crack.py || python ecdsa-nonce_reuse-crack.py
