@@ -16,4 +16,4 @@ matrix:
       env: PATH=/c/Python37:/c/Python37/Scripts:$PATH
 
 script:
-  - python3 ecdsa-nonce_reuse_crack.py || python ecdsa-nonce_reuse_crack.py
+  - python3 ecdsa-nonce_reuse-crack.py || python ecdsa-nonce_reuse-crack.py
