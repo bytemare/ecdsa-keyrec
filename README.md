@@ -1,4 +1,5 @@
 # ecdsa-keyrec
+[![Build Status](https://travis-ci.org/bytemare/ecdsa-keyrec.svg?branch=master)](https://travis-ci.org/bytemare/ecdsa-keyrec)
 
 A python script implementing an attack on ECDSA nonce-reuse.
 
