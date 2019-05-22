@@ -2,9 +2,12 @@ import hashlib
 import base64
 import binascii
 
-from ecdsa.ecdsa import Signature
-from ecdsa.numbertheory import inverse_mod
-from ecdsa import SigningKey, VerifyingKey, der
+try:
+    from ecdsa.ecdsa import Signature
+    from ecdsa.numbertheory import inverse_mod
+    from ecdsa import SigningKey, VerifyingKey, der
+except ImportError:
+    raise ImportError("ECDSA tools are required. Use 'pip3 install -r requirements.txt' or 'pip install -r requirements.txt' to install dependencies.")
 
 # Debug Mode
 debug = True
@@ -12,7 +15,7 @@ debug = True
 # Chose a hashing algorithm between : sha1, sha224, sha256, sha384, sha512 and md5
 hashing_algorithm = "sha256"
 
-# The ECW flag to sign
+# Some message to sign
 flag_clear = "Please give me the flag"
 
 # The Public key
@@ -55,11 +58,13 @@ def rs_from_der(der_encoded_signature):
     s       : s coordinate as big-endian positive signed integer (i.e. must start between 0x00 and 0x7F)
 
     INFO : After hitting my head against the wall and developing this to extract r and s by hand,
-    I found out python-ecdsa had der functions for that. #RTFC
+    I found out python-ecdsa had DER decoding functions for that. #RTFC
 
     :param der_encoded_signature:
     :return: r, s
     """
+
+    # Look if library is available
     try:
         __import__("ecdsa.der")
     except ImportError:
