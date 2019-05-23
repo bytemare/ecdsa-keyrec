@@ -207,11 +207,11 @@ def recover_private_key(curve, hash_1, sig_1, hash_2, sig_2, hash_algo):
         # Building the secret key
         secret_key = SigningKey.from_secret_exponent(secexp, curve=curve, hashfunc=hash_algo)
 
-        print(k)
-
+        if debug:
+            print("[DBG] Trying k : " + str(k))
+        
         # Verify if build key is appropriate
         if secret_key.get_verifying_key().pubkey.verifies(hash_1, sig_1):
-            print(k)
             return secret_key
 
     assert False, "Could not recover corresponding private key"
@@ -248,6 +248,41 @@ def sign_in_der(signing_key, message, hash_algo):
         print("Message successfully verified.")
 
     return base64.b64encode(d)
+
+
+def get_file_content(_file):
+    """
+    """
+    with open(_file, 'r') as file:
+        data = file.read()
+    
+    return data
+
+
+def test_files():
+    path="./tests/test1/"
+    pkey=get_file_content(path + "pub.key")
+    msg1=get_file_content(path + "message_1.txt")
+    msg2=get_file_content(path + "message_2.txt")
+    sig1=get_file_content(path + "signature_1.txt")
+    sig2=get_file_content(path + "signature_2.txt")
+
+    # Transform PEM public key to python VerifyinKey type
+    public_verification_key = VerifyingKey.from_pem(pkey.strip())
+
+    # Launch exploit to try to get private key
+    private_key = get_private_key(public_verification_key.curve,
+                                  msg1.encode('utf-8'),
+                                  sig1,
+                                  msg2.encode('utf-8'),
+                                  sig2,
+                                  get_hash_function(hashing_algorithm))
+
+    # Print the recovered private key
+    print(private_key.to_pem())
+
+    # Sign message
+    print(sign_in_der(private_key, flag_clear.encode('utf-8'), hashing_algorithm))
 
 
 def test_chall():
@@ -300,4 +335,6 @@ if __name__ == "__main__":
 
     #test_chall()
 
-    test_hardcoded()
+    #test_hardcoded()
+
+    test_files()
