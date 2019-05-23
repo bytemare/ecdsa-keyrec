@@ -28,4 +28,4 @@ install:
   - pip install -r requirements.txt || pip3 install -r requirements.txt
 
 script:
-  - python3 ecdsa-nonce_reuse-crack.py || python ecdsa-nonce_reuse-crack.py
+  - ./tests/test.sh
