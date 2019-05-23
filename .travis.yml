@@ -25,8 +25,7 @@ matrix:
       env: PATH=/c/Python37:/c/Python37/Scripts:$PATH
 
 install:
-  - pip install -r requirements.txt
-  - pip3 install -r requirements.txt
+  - pip install -r requirements.txt || pip3 install -r requirements.txt
 
 script:
   - python3 ecdsa-nonce_reuse-crack.py || python ecdsa-nonce_reuse-crack.py
