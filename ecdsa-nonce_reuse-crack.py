@@ -87,7 +87,8 @@ def rs_from_der(der_encoded_signature):
     else:
         rs, _ = der.remove_sequence(der.unpem(der_encoded_signature))
         r, tail = der.remove_integer(rs)
-        s, point_str_bitstring = der.remove_integer(tail)
+        # s, point_str_bitstring = der.remove_integer(tail)
+        s, _ = der.remove_integer(tail)
 
     if debug:
         print("r : " + str(r))
@@ -132,16 +133,20 @@ def digest(hash_algo, data):
     :param data:
     :return:
     """
-    algo = get_hash_function(hash_algo)
+    if isinstance(hash_algo, str):
+        algo = get_hash_function(hash_algo)
+    else:
+        algo = hash_algo
+
     _digest = algo()
     _digest.update(data)
     return _digest.digest()
 
 
-def get_private_key(verification_key, msg_1, sign_1, msg_2, sign_2, hash_algo):
+def get_private_key(curve, msg_1, sign_1, msg_2, sign_2, hash_algo):
     """
     Wrapper function to recover_private_key
-    :param verification_key: Public ECDSA key in VerficationKey type
+    :param curve: Curve used in ECDSA key in Curve type
     :param msg_1: Cleartext message string
     :param sign_1: Base64 encoded signature of msg_1
     :param msg_2: Cleartext message string
@@ -160,25 +165,24 @@ def get_private_key(verification_key, msg_1, sign_1, msg_2, sign_2, hash_algo):
     msg_1_int_hash = int(binascii.hexlify(digest(hash_algo, msg_1)), 16)
     msg_2_int_hash = int(binascii.hexlify(digest(hash_algo, msg_2)), 16)
 
-    return recover_private_key(verification_key, msg_1_int_hash, sig_1, msg_2_int_hash, sig_2, hash_algo)
+    return recover_private_key(curve, msg_1_int_hash, sig_1, msg_2_int_hash, sig_2, hash_algo)
 
 
-def recover_private_key(verification_key, hash_1, sig_1, hash_2, sig_2, hash_algo):
+def recover_private_key(curve, hash_1, sig_1, hash_2, sig_2, hash_algo):
     """
     Exploit Nonce-Reuse Vulnerability in ECDSA
     Tries to recover the private key used for signing in case of double nonce-use
     If not recovered, hits an assert
-    :param verification_key:
-    :param hash_1:
-    :param sig_1:
-    :param hash_2:
-    :param sig_2:
-    :param hash_algo:
+    :param curve: Curve used in ECDSA key in Curve type
+    :param hash_1: int
+    :param sig_1: Signature
+    :param hash_2: int
+    :param sig_2: Signature
+    :param hash_algo: a hashlib hash algorithm
     :return:
     """
 
-    # Extract curve info from public key
-    curve = verification_key.curve
+    # Extract order from curve
     order = curve.order
 
     # Precompute values for minor optimisation
@@ -201,10 +205,13 @@ def recover_private_key(verification_key, hash_1, sig_1, hash_2, sig_2, hash_alg
         secexp = (((((sig_1.s * k) % order) - hash_1) % order) * sig_1_r_inv) % order
 
         # Building the secret key
-        secret_key = SigningKey.from_secret_exponent(secexp, curve=curve, hashfunc=get_hash_function(hash_algo))
+        secret_key = SigningKey.from_secret_exponent(secexp, curve=curve, hashfunc=hash_algo)
+
+        print(k)
 
         # Verify if build key is appropriate
         if secret_key.get_verifying_key().pubkey.verifies(hash_1, sig_1):
+            print(k)
             return secret_key
 
     assert False, "Could not recover corresponding private key"
@@ -243,23 +250,54 @@ def sign_in_der(signing_key, message, hash_algo):
     return base64.b64encode(d)
 
 
-if __name__ == "__main__":
+def test_chall():
+    from ecdsa.curves import NIST192p
+    z1 = "78963682628359021178354263774457319969002651313568557216154777320971976772376".encode('utf-8')
+    s1 = 5416854926380100427833180746305766840425542218870878667299
+    r1 = 5568285309948811794296918647045908208072077338037998537885
+    z2 = "62159883521253885305257821420764054581335542629545274203255594975380151338879".encode('utf-8')
+    s2 = 1063435989394679868923901244364688588218477569545628548100
+    r2 = 5568285309948811794296918647045908208072077338037998537885
+    n = 6277101735386680763835789423176059013767194773182842284081
+    curve = NIST192p
+    hash_algo = get_hash_function("md5")
 
+    # Build Signature types from r and s
+    sig_1 = Signature(r1, s1)
+    sig_2 = Signature(r2, s2)
+
+    # Compute hashes
+    msg_1_int_hash = int(binascii.hexlify(digest(hash_algo, z1)), 16)
+    msg_2_int_hash = int(binascii.hexlify(digest(hash_algo, z1)), 16)
+
+    private_key = recover_private_key(curve, msg_1_int_hash, sig_1, msg_2_int_hash, sig_2, hash_algo)
+
+    print("out of chall")
+
+
+def test_hardcoded():
     # Transform PEM public key to python VerifyinKey type
     public_verification_key = VerifyingKey.from_pem(public_key_pem.strip())
 
     # Launch exploit to try to get private key
-    private_key = get_private_key(public_verification_key,
+    private_key = get_private_key(public_verification_key.curve,
                                   message_1_cleartext.encode('utf-8'),
                                   message_1_signature_der,
                                   message_2_cleartext.encode('utf-8'),
                                   message_2_signature_der,
-                                  hashing_algorithm)
+                                  get_hash_function(hashing_algorithm))
 
     # Print the recovered private key
     print(private_key.to_pem())
 
-    # Sign ECW Flag
+    # Sign message
     flag_signed = sign_in_der(private_key, flag_clear.encode('utf-8'), hashing_algorithm)
     
     print(sign_in_der(private_key, flag_clear.encode('utf-8'), hashing_algorithm))
+
+
+if __name__ == "__main__":
+
+    #test_chall()
+
+    test_hardcoded()
