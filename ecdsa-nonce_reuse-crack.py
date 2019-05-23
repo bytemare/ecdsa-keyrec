@@ -209,7 +209,7 @@ def recover_private_key(curve, hash_1, sig_1, hash_2, sig_2, hash_algo):
 
         if debug:
             print("[DBG] Trying k : " + str(k))
-        
+
         # Verify if build key is appropriate
         if secret_key.get_verifying_key().pubkey.verifies(hash_1, sig_1):
             return secret_key
@@ -259,13 +259,12 @@ def get_file_content(_file):
     return data
 
 
-def test_files():
-    path="./tests/test1/"
-    pkey=get_file_content(path + "pub.key")
-    msg1=get_file_content(path + "message_1.txt")
-    msg2=get_file_content(path + "message_2.txt")
-    sig1=get_file_content(path + "signature_1.txt")
-    sig2=get_file_content(path + "signature_2.txt")
+def call_from_files(public_key_path, message1_path, message2_path, signature1_path, signature2_path, hash_alg):
+    pkey=get_file_content(public_key_path)
+    msg1=get_file_content(message1_path)
+    msg2=get_file_content(message2_path)
+    sig1=get_file_content(signature1_path)
+    sig2=get_file_content(signature2_path)
 
     # Transform PEM public key to python VerifyinKey type
     public_verification_key = VerifyingKey.from_pem(pkey.strip())
@@ -277,12 +276,14 @@ def test_files():
                                   msg2.encode('utf-8'),
                                   sig2,
                                   get_hash_function(hashing_algorithm))
+    
+    return private_key
 
     # Print the recovered private key
-    print(private_key.to_pem())
+    #print(private_key.to_pem())
 
     # Sign message
-    print(sign_in_der(private_key, flag_clear.encode('utf-8'), hashing_algorithm))
+    #print(sign_in_der(private_key, flag_clear.encode('utf-8'), hashing_algorithm))
 
 
 def test_chall():
@@ -325,11 +326,42 @@ def test_hardcoded():
     # Print the recovered private key
     print(private_key.to_pem())
 
-    # Sign message
-    flag_signed = sign_in_der(private_key, flag_clear.encode('utf-8'), hashing_algorithm)
-    
+    # Sign message    
     print(sign_in_der(private_key, flag_clear.encode('utf-8'), hashing_algorithm))
 
+
+def parse():
+    import argparse
+    parser = argparse.ArgumentParser(description="Retrieve ECDSA private key by exploiting a nonce-reuse in signatures.")
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-q", "--quiet", action="store_true", help="Do not output anything on terminal (but errors and exceptions may still be printed). Private key will be printed in default file.")
+    group.add_argument("-v", "--verbosity", action="count", default=0,
+                        help="increase output verbosity")
+
+    parser.add_argument("-pk", "--pubkey", type=str, help="Path to the file containing a PEM encoded public key.")
+    parser.add_argument("-m1", "--message1", type=str, help="Path to the text file containing the first message that has been signed.")
+    parser.add_argument("-m2", "--message2", type=str, help="Path to the text file containing the second message that has been signed.")
+    parser.add_argument("-s1", "--signature1", type=str, help="Path to the text file containing the base64 encoded signature of the first message.")
+    parser.add_argument("-s2", "--signature2", type=str, help="Path to the text file containing the base64 encoded signature of the first message.")
+    parser.add_argument("-alg", "--hashalg", type=str, choices=['sha1', 'sha224', 'sha256', 'sha384', 'sha512', 'md5'], help="Hash algorithm used for the signature.")
+    parser.add_argument("-o", "--ouput", type=str, default="./private.key", help="Output file to print the private key to.")
+
+    return parser
+
+def test_files():
+    """
+    python3 ecdsa-nonce_reuse-crack.py -pk ./tests/test1/pub.key -m1 ./tests/test1/message_1.txt -m2 ./tests/test1/message_2.txt -s1 ./tests/test1/signature_1.txt -s2 ./tests/test1/signature_2.txt -alg sha256
+    """
+    path="./tests/test1/"
+    pkey=path + "pub.key"
+    msg1=path + "message_1.txt"
+    msg2=path + "message_2.txt"
+    sig1=path + "signature_1.txt"
+    sig2=path + "signature_2.txt"
+    hash_alg="sha256"
+
+    return call_from_files(pkey, msg1, msg2, sig1, sig2, hash_alg)
 
 if __name__ == "__main__":
 
@@ -337,4 +369,17 @@ if __name__ == "__main__":
 
     #test_hardcoded()
 
-    test_files()
+    #test_files()
+    args = parse().parse_args()
+    print(args)
+
+    private_key = call_from_files(args.pubkey,
+                                    args.message1,
+                                    args.message2,
+                                    args.signature1,
+                                    args.signature2,
+                                    args.hashalg)
+    
+    print(private_key.to_pem())
+
+    print(sign_in_der(private_key, flag_clear.encode('utf-8'), hashing_algorithm))
