@@ -193,7 +193,7 @@ def recover_private_key(curve, hash_1, sig_1, hash_2, sig_2, hash_algo):
                 print("[DBG] Secret key : " + str(secret_key.to_pem()))
             return secret_key
 
-    assert False, "Could not recover corresponding private key"
+    assert False, "Could not recover corresponding private key."
 
 
 def sign_in_der(signing_key, message, hash_algo):
@@ -441,10 +441,7 @@ def conditional_exec(args):
         return hardcoded()
     
 
-
-
-if __name__ == "__main__":
-
+def main():
     #test_chall()
 
     args = parse().parse_args()
@@ -455,4 +452,8 @@ if __name__ == "__main__":
     #call_from_files(args.pubkey,args.message1,args.message2,args.signature1,args.signature2,args.hashalg)
     
     #print(private_key.to_pem())
+
+if __name__ == "__main__":
+    exit (main())
+    
 
