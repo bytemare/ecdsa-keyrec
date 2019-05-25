@@ -516,8 +516,8 @@ def conditional_exec(args):
         print("cli")
 
     elif args.hardcoded:
-        # return hardcoded()
-        return test_chall_2()
+        return hardcoded()
+        # return test_chall_2()
 
     elif args.hardcoded_files:
         return hardcoded_files()
