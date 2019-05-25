@@ -11,7 +11,7 @@ except ImportError:
                       "requirements.txt' to install dependencies.")
 
 # Debug Mode
-debug = True
+verbosity = 0
 
 
 class UnknownHashAlgorithmError(Exception):
@@ -68,7 +68,7 @@ def rs_from_der(der_encoded_signature):
         # s, point_str_bitstring = der.remove_integer(tail)
         s, _ = der.remove_integer(tail)
 
-    if debug:
+    if verbosity >= 2:
         print("r : " + str(r))
         print("s : " + str(s))
 
@@ -116,8 +116,15 @@ def digest(hash_algo, data):
     else:
         algo = hash_algo
 
+    if verbosity >= 2:
+        print("Hashing data : '{}'".format(data))
+
     _digest = algo()
     _digest.update(data)
+
+    if verbosity >= 1:
+        print("Hashed value : '{}'".format(str(binascii.hexlify(_digest.digest()))))
+
     return _digest.digest()
 
 
@@ -143,59 +150,102 @@ def get_private_key(curve, msg_1, sign_1, msg_2, sign_2, hash_algo):
     msg_1_int_hash = int(binascii.hexlify(digest(hash_algo, msg_1)), 16)
     msg_2_int_hash = int(binascii.hexlify(digest(hash_algo, msg_2)), 16)
 
-    return recover_private_key(curve, msg_1_int_hash, sig_1, msg_2_int_hash, sig_2, hash_algo)
+    if verbosity >= 2:
+        print("Message : '{}'\n\thashed to : '{}'".format(msg_1, msg_1_int_hash))
+        print("Message : '{}'\n\thashed to : '{}'".format(msg_2, msg_2_int_hash))
+
+    return recover_signing_key(curve, msg_1_int_hash, sig_1, msg_2_int_hash, sig_2, hash_algo)
 
 
-def recover_private_key(curve, hash_1, sig_1, hash_2, sig_2, hash_algo):
+def recover_from_hash(curve, r, s1, h1, s2, h2, hashfunc):
+    """
+
+    :param curve:
+    :param r:
+    :param s1:
+    :param h1:
+    :param s2:
+    :param h2:
+    :param hashfunc:
+    :return:
+    """
+    # Extract order from curve
+    order = curve.order
+
+    # Precomputed values for minor optimisation
+    r_inv = inverse_mod(r, order)
+    h = (h1 - h2) % order
+
+    #
+    # Signature is still valid whether s or -s mod curve_order (or n)
+    # s*k-h
+    # Try different possible values for "random" k until hit
+    for k_try in (s1 - s2,
+                  s1 + s2,
+                  -s1 - s2,
+                  -s1 + s2):
+
+        # Retrieving actual k
+        k = (h * inverse_mod(k_try, order)) % order
+
+        if verbosity >= 2:
+            print("Trying nonce value : '{}'".format(k))
+
+        # Secret exponent
+        secexp = (((((s1 * k) % order) - h1) % order) * r_inv) % order
+
+        if verbosity >= 2:
+            print("Secret exposant : '{}'".format(secexp))
+
+        # Building the secret key
+        signing_key = SigningKey.from_secret_exponent(secexp, curve=curve, hashfunc=hashfunc)
+
+        if verbosity >= 2:
+            print("Trying signing key : '{}'".format(signing_key.to_pem()))
+
+        # Verify if build key is appropriate
+        if signing_key.get_verifying_key().pubkey.verifies(h1, Signature(r, s1)):
+            if verbosity >= 1:
+                print("Success !")
+            return signing_key
+
+    return None
+
+
+def recover_from_text(curve, r, s1, z1, s2, z2, hashfunc):
+    """
+
+    :param curve:
+    :param r:
+    :param s1:
+    :param z1:
+    :param s2:
+    :param z2:
+    :param hashfunc:
+    :return:
+    """
+
+    h1 = int(binascii.hexlify(digest(hashfunc, z1)), 16)
+    h2 = int(binascii.hexlify(digest(hashfunc, z2)), 16)
+
+    return recover_from_hash(curve, r, s1, h1, s2, h2, hashfunc)
+
+
+def recover_signing_key(curve, hash_1, sig_1, hash_2, sig_2, hashfunc):
     """
     Exploit Nonce-Reuse Vulnerability in ECDSA
-    Tries to recover the private key used for signing in case of double nonce-use
+    Tries to recover the signing key used in case of double nonce-use
     If not recovered, hits an assert
     :param curve: Curve used in ECDSA key in Curve type
     :param hash_1: int
     :param sig_1: Signature
     :param hash_2: int
     :param sig_2: Signature
-    :param hash_algo: a hashlib hash algorithm
+    :param hashfunc: a hashlib hash algorithm
     :return: SigningKey
     """
 
-    # Extract order from curve
-    order = curve.order
-
-    # Precompute values for minor optimisation
-    sig_1_r_inv = inverse_mod(sig_1.r, order)
-    z = (hash_1 - hash_2) % order
-
-    #
-    # Signature is still valid whether s or -s mod curve_order (or n)
-    # s*k-h
-    # Try different possible values for "random" k until hit
-    for k_try in (sig_1.s - sig_2.s,
-                  sig_1.s + sig_2.s,
-                  -sig_1.s - sig_2.s,
-                  -sig_1.s + sig_2.s):
-
-        # Retrieving actual k
-        k = (z * inverse_mod(k_try, order)) % order
-
-        # Secret exponent
-        secexp = (((((sig_1.s * k) % order) - hash_1) % order) * sig_1_r_inv) % order
-
-        # Building the secret key
-        secret_key = SigningKey.from_secret_exponent(secexp, curve=curve, hashfunc=hash_algo)
-
-        if debug:
-            print("[DBG] Trying k : " + str(k))
-
-        # Verify if build key is appropriate
-        if secret_key.get_verifying_key().pubkey.verifies(hash_1, sig_1):
-            if debug:
-                print("[DBG] Success !")
-                print("[DBG] Secret key : " + str(secret_key.to_pem()))
-            return secret_key
-
-    assert False, "Could not recover corresponding private key."
+    return recover_from_hash(curve, sig_1.r, sig_1.s, hash_1, sig_2.s, hash_2, hashfunc)
 
 
 def sign(signing_key, message, hash_algo):
@@ -234,7 +284,7 @@ def sign_in_der(signing_key, message, hash_algo):
     d = der.encode_sequence(der.encode_integer(r), der.encode_integer(s))
     der_signature = base64.b64encode(d)
 
-    if debug:
+    if verbosity >= 2:
         print("")
         print("[DBG] hash (hex) : " + str(binascii.hexlify(hash)))
         print("[DBG] r (" + str(len(str(hex(r)))) + ") : " + str(hex(r)))
@@ -293,101 +343,51 @@ def call_from_files(public_key_path, message1_path, message2_path, signature1_pa
     return private_key
 
 
-def test_chall():
+def test_chall_2():
+    """
+
+    :return:
+    """
+    from ecdsa.curves import NIST256p
+    hash1 = '01b125d18422cdfa7b153f5bcf5b01927cf59791d1d9810009c70cd37b14f4e6'
+    sig1_hex = '304402200861cce1da15fc2dd79f1164c4f7b3e6c1526e7e8d85716578689ca9a5dc349d02206cf26e2776f7c94cafcee05cc810471ddca16fa864d13d57bee1c06ce39a3188 '
+    hash2 = '339ff7b1ced3a45c988b3e4e239ea745db3b2b3fda6208134691bd2e4a37d6e1'
+    sig2_hex = '304402200861cce1da15fc2dd79f1164c4f7b3e6c1526e7e8d85716578689ca9a5dc349d02204ba75bdda43b3aab84b895cfd9ef13a477182657faaf286a7b0d25f0cb9a7de2'
+    curve = NIST256p
+    hash_algo = get_hash_function("sha256")
+
+    sig1 = Signature
+
+    int_h1 = int(hash1, 16)
+    int_r = int(sig1_hex[:len(sig1_hex)//2], 16)
+    int_s1 = int(sig1_hex[len(sig1_hex)//2:], 16)
+    int_hash2 = int(hash2, 16)
+    int_s2 = int(sig2_hex[len(sig2_hex)//2:], 16)
+
+    print(recover_from_hash(curve, int_r, int_s1, int_h1, int_s2, int_hash2, hash_algo))
+
+    print("out of chall")
+
+
+def test_chall_1():
     """
 
     :return:
     """
     from ecdsa.curves import NIST192p
-    z1 = "78963682628359021178354263774457319969002651313568557216154777320971976772376".encode('utf-8')
+    hash1 = 78963682628359021178354263774457319969002651313568557216154777320971976772376
     s1 = 5416854926380100427833180746305766840425542218870878667299
     r1 = 5568285309948811794296918647045908208072077338037998537885
-    z2 = "62159883521253885305257821420764054581335542629545274203255594975380151338879".encode('utf-8')
+    hash2 = 62159883521253885305257821420764054581335542629545274203255594975380151338879
     s2 = 1063435989394679868923901244364688588218477569545628548100
-    r2 = 5568285309948811794296918647045908208072077338037998537885
-    n = 6277101735386680763835789423176059013767194773182842284081
+    # r2 = 5568285309948811794296918647045908208072077338037998537885
+    # n = 6277101735386680763835789423176059013767194773182842284081
     curve = NIST192p
-    hash_algo = get_hash_function("md5")
+    hash_algo = get_hash_function("sha256")
 
-    # Build Signature types from r and s
-    sig_1 = Signature(r1, s1)
-    sig_2 = Signature(r2, s2)
-
-    # Compute hashes
-    msg_1_int_hash = int(binascii.hexlify(digest(hash_algo, z1)), 16)
-    msg_2_int_hash = int(binascii.hexlify(digest(hash_algo, z2)), 16)
-
-    print(recover_private_key(curve, msg_1_int_hash, sig_1, msg_2_int_hash, sig_2, hash_algo).to_pem())
+    print(recover_from_hash(curve, r1, s1, hash1, s2, hash2, hash_algo))
 
     print("out of chall")
-
-
-def parse():
-    """
-
-    :return:
-    """
-    import argparse
-    parser = argparse.ArgumentParser(usage="",
-                                     description="Retrieve ECDSA private key by exploiting a nonce-reuse in "
-                                                 "signatures.",
-                                     epilog="")
-
-    verb = parser.add_mutually_exclusive_group()
-    verb.add_argument("-q", "--quiet", action="store_true", help="Do not output anything on terminal (but errors and "
-                                                                 "exceptions may still be printed). Private key will "
-                                                                 "be printed in default file.")
-    verb.add_argument("-v", "--verbosity", action="count", default=0,
-                      help="increase output verbosity")
-
-    commands = parser.add_mutually_exclusive_group(required=True)
-    commands.add_argument("-files", action="store_true", default=False,
-                          help="Specify this command if you want to read input from files.")
-    commands.add_argument("-cli", action="store_true", default=False,
-                          help="Specify this command if you want to read values directly from cli.")
-    commands.add_argument("-hardcoded", action="store_true", default=False,
-                          help="Modify values inside this script to operate.")
-    commands.add_argument("-hardcoded-files", action="store_true", default=False,
-                          help="Modify file names inside this script to operate.")
-
-    # Files
-    cmd_files = parser.add_argument_group('-files')
-
-    cmd_files.add_argument("--pubkey", type=str, help="Path to the file containing a PEM encoded public key.")
-    cmd_files.add_argument("--message1", type=str,
-                           help="Path to the text file containing the first message that has been signed.")
-    cmd_files.add_argument("--message2", type=str,
-                           help="Path to the text file containing the second message that has been signed.")
-    cmd_files.add_argument("--signature1", type=str,
-                           help="Path to the text file containing the base64 encoded signature of the first message.")
-    cmd_files.add_argument("--signature2", type=str,
-                           help="Path to the text file containing the base64 encoded signature of the first message.")
-    cmd_files.add_argument("--hashalg", type=str, choices=['sha1', 'sha224', 'sha256', 'sha384', 'sha512', 'md5'],
-                           help="Hash algorithm used for the signatures.")
-    cmd_files.add_argument("--ouput", type=str, default="./private.key",
-                           help="Output file to print the private key to.")
-
-    # CLI
-    cmd_cli = parser.add_argument_group('-cli')
-    cmd_cli.add_argument("-pk", type=str, help="PEM encoded public key.")
-    cmd_cli.add_argument("-m1", type=str, help="First message that has been signed.")
-    cmd_cli.add_argument("-m2", type=str, help="Second message that has been signed.")
-    cmd_cli.add_argument("-sig1", type=str, help="Base64 encoded signature of the first message.")
-    cmd_cli.add_argument("-sig2", type=str, help="Base64 encoded signature of the first message.")
-    cmd_cli.add_argument("-alg", type=str, choices=['sha1', 'sha224', 'sha256', 'sha384', 'sha512', 'md5'],
-                         help="Hash algorithm used for the signatures.")
-    cmd_cli.add_argument("-o", type=str, default="./private.key", help="Output file to print the private key to.")
-    cmd_cli.add_argument("-r", type=int, help="First half of the signature that is common in both signatures.")
-    cmd_cli.add_argument("-s1", type=int, help="Second half of the signature of first message.")
-    cmd_cli.add_argument("-s2", type=int, help="Second half of the signature of second message.")
-
-    # Hardcoded
-    _ = parser.add_argument_group('-hardcoded')
-
-    # Hardcoded
-    _ = parser.add_argument_group('-hardcoded-files')
-
-    return parser
 
 
 def hardcoded_files():
@@ -464,6 +464,10 @@ def check_arguments(args):
     def _build_missing_arg_error(command, arg_name):
         return "With {} command, {} argument needs to be defined.".format(command, arg_name)
 
+    if args.verbosity > 0:
+        global verbosity
+        verbosity = args.verbosity
+
     if args.files:
         assert args.pubkey, _build_missing_arg_error("-files,", "--pubkey")
         assert args.message1, _build_missing_arg_error("-files", "--message1")
@@ -499,7 +503,6 @@ def conditional_exec(args):
     :param args:
     :return:
     """
-    check_arguments(args)
 
     if args.files:
         return call_from_files(args.pubkey,
@@ -513,17 +516,87 @@ def conditional_exec(args):
         print("cli")
 
     elif args.hardcoded:
-        return hardcoded()
+        # return hardcoded()
+        return test_chall_2()
 
     elif args.hardcoded_files:
         return hardcoded_files()
+
+
+def parse():
+    """
+
+    :return:
+    """
+    import argparse
+    parser = argparse.ArgumentParser(usage="",
+                                     description="Retrieve ECDSA private key by exploiting a nonce-reuse in "
+                                                 "signatures.",
+                                     epilog="")
+
+    verb = parser.add_mutually_exclusive_group()
+    verb.add_argument("-q", "--quiet", action="store_true", help="Do not output anything on terminal (but errors and "
+                                                                 "exceptions may still be printed). Private key will "
+                                                                 "be printed in default file.")
+    verb.add_argument("-v", "--verbosity", action="count", default=0,
+                      help="increase output verbosity")
+
+    commands = parser.add_mutually_exclusive_group(required=True)
+    commands.add_argument("-files", action="store_true", default=False,
+                          help="Specify this command if you want to read input from files.")
+    commands.add_argument("-cli", action="store_true", default=False,
+                          help="Specify this command if you want to read values directly from cli.")
+    commands.add_argument("-hardcoded", action="store_true", default=False,
+                          help="Modify values inside this script to operate.")
+    commands.add_argument("-hardcoded-files", action="store_true", default=False,
+                          help="Modify file names inside this script to operate.")
+
+    # Files
+    cmd_files = parser.add_argument_group('-files')
+
+    cmd_files.add_argument("--pubkey", type=str, help="Path to the file containing a PEM encoded public key.")
+    cmd_files.add_argument("--message1", type=str,
+                           help="Path to the text file containing the first message that has been signed.")
+    cmd_files.add_argument("--message2", type=str,
+                           help="Path to the text file containing the second message that has been signed.")
+    cmd_files.add_argument("--signature1", type=str,
+                           help="Path to the text file containing the base64 encoded signature of the first message.")
+    cmd_files.add_argument("--signature2", type=str,
+                           help="Path to the text file containing the base64 encoded signature of the first message.")
+    cmd_files.add_argument("--hashalg", type=str, choices=['sha1', 'sha224', 'sha256', 'sha384', 'sha512', 'md5'],
+                           help="Hash algorithm used for the signatures.")
+    cmd_files.add_argument("--ouput", type=str, default="./private.key",
+                           help="Output file to print the private key to.")
+
+    # CLI
+    cmd_cli = parser.add_argument_group('-cli')
+    cmd_cli.add_argument("-pk", type=str, help="PEM encoded public key.")
+    cmd_cli.add_argument("-m1", type=str, help="First message that has been signed.")
+    cmd_cli.add_argument("-m2", type=str, help="Second message that has been signed.")
+    cmd_cli.add_argument("-sig1", type=str, help="Base64 encoded signature of the first message.")
+    cmd_cli.add_argument("-sig2", type=str, help="Base64 encoded signature of the first message.")
+    cmd_cli.add_argument("-alg", type=str, choices=['sha1', 'sha224', 'sha256', 'sha384', 'sha512', 'md5'],
+                         help="Hash algorithm used for the signatures.")
+    cmd_cli.add_argument("-o", type=str, default="./private.key", help="Output file to print the private key to.")
+    cmd_cli.add_argument("-r", type=int, help="First half of the signature that is common in both signatures.")
+    cmd_cli.add_argument("-s1", type=int, help="Second half of the signature of first message.")
+    cmd_cli.add_argument("-s2", type=int, help="Second half of the signature of second message.")
+
+    # Hardcoded
+    _ = parser.add_argument_group('-hardcoded')
+
+    # Hardcoded
+    _ = parser.add_argument_group('-hardcoded-files')
+    return parser
 
 
 def main():
     # test_chall()
 
     args = parse().parse_args()
-    if debug:
+    check_arguments(args)
+
+    if args.verbosity >= 2:
         print(args)
 
     if conditional_exec(args):
