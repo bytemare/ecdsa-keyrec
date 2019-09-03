@@ -1,9 +1,9 @@
 # ecdsa-keyrec
 [![Build Status](https://travis-ci.org/bytemare/ecdsa-keyrec.svg?branch=master)](https://travis-ci.org/bytemare/ecdsa-keyrec)
 
-A python script implementing an attack on ECDSA nonce-reuse.
+A python script enabling private key recovery from signatures by implementing an attack on ECDSA nonce-reuse.
 
-Sample text, public key, and signed messages are given for test.
+Sample text, public key, and signed messages are given for test and example.
 
 Needed package : ecdsa
 
