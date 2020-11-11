@@ -5,6 +5,8 @@ A python script enabling private key recovery from signatures by implementing an
 
 Sample text, public key, and signed messages are given for test and example.
 
+NB: beware of newlines if you're using files, and if you really want them there. Newlines in signature files might not be supported, you might as well strip them.
+
 Needed package : ecdsa
 
 ``` shell
