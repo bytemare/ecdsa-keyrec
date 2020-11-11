@@ -435,7 +435,7 @@ bFTkMdbFM+SVYaFySfyUggFwTNKiDuTayOpLQNF6ypapU3eXBnIkWdcqSw==
     message_2_signature_der = "MEUCIDzdi89bc02mdxTxSo7tA8dmr3Xl0PrxugSy7KO93NR6AiEAkhWDrap8G1x5mMSXJtdeJ56hx61G7sg4ojS" \
                               "+i4eabF4=".strip()
 
-    # Transform PEM public key to python VerifyinKey type
+    # Transform PEM public key to python VerifyingKey type
     public_verification_key = VerifyingKey.from_pem(public_key_pem.strip())
 
     # Launch exploit to try to get private key
@@ -517,7 +517,6 @@ def conditional_exec(args):
 
     elif args.hardcoded:
         return hardcoded()
-        # return test_chall_2()
 
     elif args.hardcoded_files:
         return hardcoded_files()
@@ -565,7 +564,7 @@ def parse():
                            help="Path to the text file containing the base64 encoded signature of the first message.")
     cmd_files.add_argument("--hashalg", type=str, choices=['sha1', 'sha224', 'sha256', 'sha384', 'sha512', 'md5'],
                            help="Hash algorithm used for the signatures.")
-    cmd_files.add_argument("--ouput", type=str, default="./private.key",
+    cmd_files.add_argument("--output", type=str, default="./private.key",
                            help="Output file to print the private key to.")
 
     # CLI
@@ -599,7 +598,9 @@ def main():
     if args.verbosity >= 2:
         print(args)
 
-    if conditional_exec(args):
+    private_key = conditional_exec(args)
+    if private_key:
+        open(args.output, "wb").write(private_key.to_pem())
         print("Successfully recovered private key.")
 
 
